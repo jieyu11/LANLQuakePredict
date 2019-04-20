@@ -1,21 +1,16 @@
 import numpy as np # linear algebra
 import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
-
 import matplotlib.pyplot as plt
-##%matplotlib inline
-import sys                                # system specific:     https://docs.python.org/3.6/library/sys.html
-
+import sys
 import keras
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation, LSTM
 from keras.optimizers import SGD
-
+from keras.models import model_from_json
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error
 import math
 import datetime
-
-from keras.models import model_from_json
 
 def create_dataset(X, Y = None, look_back=1):
   '''
@@ -152,10 +147,10 @@ def load_testdata( ftest, look_back = 1):
   dataset = pd.read_csv(ftest, dtype={'acoustic_data': np.int16, 'time_to_failure': np.float64})
   dataset.rename({"acoustic_data": "X"}, axis="columns", inplace=True)
   npoints = len(dataset.X.values) 
-  print("Test data: ", ftest, " has ", npoints, " data points.", sep = "")
+  #print("Test data: ", ftest, " has ", npoints, " data points.", sep = "")
   arrTestX, __Ynone = create_dataset( dataset.X.values, look_back = look_back )
   testX = np.array(arrTestX)
-  print(" - Test data shape: ", testX.shape)
+  #print(" - Test data shape: ", testX.shape)
   return testX.reshape(testX.shape[0], 1, testX.shape[1])
  
 def main():
@@ -166,33 +161,78 @@ def main():
   '''
 
   ftrain = "data/train.csv"
-  if len(sys.argv) >= 2: ftrain = sys.argv[1]
+  #5656575
+  #ntrain_max = -1 # -1 for all
+  ntrain_max = -1
+  ftestlist = "tests.txt"
+  iarg = 1
+  remodel = True
+  look_back = 1
+  while iarg < len(sys.argv):
+    if str(sys.argv[iarg]) == "-train":
+      iarg += 1
+      ftrain = sys.argv[ iarg ]
+    elif str(sys.argv[iarg]) == "-ntrain_max":
+      iarg += 1
+      ntrain_max = int(sys.argv[ iarg ])
+    elif str(sys.argv[iarg]) == "-test":
+      iarg += 1
+      ftestlist = sys.argv[ iarg ]
+    elif str(sys.argv[iarg]) == "-make":
+      remodel = True
+    elif str(sys.argv[iarg]) == "-pred":
+      remodel = False
+    elif str(sys.argv[iarg]) == "-look_back":
+      iarg += 1
+      look_back = int(sys.argv[ iarg ])
+    elif str(sys.argv[iarg]) == "-help" or str(sys.argv[iarg]) == "-h":
+      print("Argument List: [-train train.csv] [-test tests.txt] [-make] [-pred]")
+      return None
+    else:
+      print("Argument: ", sys.argv[iarg], " not known. Use: [-train train.csv] [-test tests.txt] [-make] [-pred] [-look_back 3]")
+
+    iarg += 1
+
+
+  print("==============================================")
+  print("Read training: ", ftrain)
+  print("Number of training data points: ", ntrain_max)
+  print("Read testing list file: ", ftestlist)
+  print("==============================================")
+ 
   #
   # make model takes a long time, up to a few days, depending on the size of the training data.
-  #make_model(ftrain, NPOINTMAX = 5656575)
+  #
+  if remodel:
+    make_model(ftrain, NPOINTMAX = ntrain_max, look_back = look_back)
+    return None
+
+
   #
   # load the saved model with its default names
   #
   model = load_model()
-  lines = [line.rstrip('\n') for line in open('tests.txt')]
+
+  #
+  # read test list file, each line contains a test segmentation inputs
+  #
+  lines = [line.rstrip('\n') for line in open( ftestlist )] 
   nline = len(lines)
   print("Number of test datasets: ", nline)
   
   df = {'seg_id': [], 'time_to_failure': []}
   for jl, ftest in enumerate( lines ):
     if jl %100 == 0:
-      print ( "------------------------------------------------------" )
-      print ( "-----------------------", jl, "-----------------------" )
-      print ( "------------------------------------------------------" )
-    testX = load_testdata( ftest )
+      print ( "Finished: ", jl, " out of ", nline )
+    testX = load_testdata( ftest, look_back )
     predY = model.predict(testX)
-    print( "Shape of output: ", predY.shape)
+    #print( "Shape of output: ", predY.shape)
     
     #keep the tail of the string: seg_ffe7cc.csv
     k0=len(ftest)
     df['seg_id'].append( ftest[k0 - 14 : k0 - 4] )
     df['time_to_failure'].append( predY[-1][0] )
-    print( "Test dataset: ", ftest[k0 - 14 : k0 - 4], ", predicted next: ", predY[-1][0])
+    #print( "Test dataset: ", ftest[k0 - 14 : k0 - 4], ", predicted next: ", predY[-1][0])
 
   pddf = pd.DataFrame( df )
   pddf.to_csv('sample_submission.csv', index=False)
