@@ -12,34 +12,51 @@ from sklearn.metrics import mean_squared_error
 import math
 import datetime
 
-def create_dataset(X, Y = None, look_back=1):
+def create_dataset(X, Y = None, look_back=1, jump = 1):
   '''
     convert an array of values into a dataset matrix
     input: 
       Training data: X, Y, both are 1-D array
       Testing data: X is 1-D array, while Y is None
       look_back: number of X entries considered to predict the next Y 
+      jump: if it is 1, then index increases by 1 for each data point
+            if it is over 1, then index increases by jump+1 for next data point
     return: formed output X and Y
   '''
 
+  if jump < 1: jump = 1
   outX, outY = [], []
-  for i in range(len(X)-look_back-1):
-    x0 = X[i:(i+look_back)] # each X element is a list of $look_back elements
+  ##for i in range(len(X)-look_back-1):
+
+  ix=0
+  while ix < len(X)-look_back-1 :
+    x0 = X[ix:(ix+look_back)] # each X element is a list of $look_back elements
     outX.append( x0 )
+    ########### if ix % 10000 == 0: print("DEBUG, ix = ", ix, ": mean of x ", np.mean(x0) )
+    ix += jump
 
   if Y is not None:
     assert (len(X) == len(Y)), "ERROR: Size of X and Y different!"
-    for i in range(len(Y)-look_back-1):
-      y0 = Y[i+look_back]     # each Y element is a single number
+    #for i in range(len(Y)-look_back-1):
+    iy=0 # iy start from look_back, while X[0] - X[look_back-1] used to predict it Y[look_back]
+    while iy < len(Y)-look_back-1:
+      y0 = Y[iy+look_back]     # each Y element is a single number
+      ########## if iy % 10000 == 0: print("DEBUG, iy = ", iy, ": value of y ", np.mean(y0) )
       outY.append( y0 )
+      iy += jump
 
+  if Y is not None:
+    assert(len(outX) == len(outY)), "ERROR: Size of outX="+str(len(outX))+" and outY="+ str(len(outY))+ " different!"
   return outX, outY
 
-def make_model( ftrain="data/train.csv", NPOINTMAX = -1, look_back = 1):
+def make_model( ftrain="data/train.csv", NPOINTMAX = -1, look_back = 1, jump = 1):
 
   print( "Step 1 @", str( datetime.datetime.now() ), " start of building a model.", sep="" )
   #nrows=nTest + testStart + 1, 
-  dataset = pd.read_csv(ftrain, dtype={'acoustic_data': np.int16, 'time_to_failure': np.float64})
+  if NPOINTMAX > 0:
+    dataset = pd.read_csv(ftrain, nrows = NPOINTMAX, dtype={'acoustic_data': np.int16, 'time_to_failure': np.float64})
+  else:
+    dataset = pd.read_csv(ftrain, dtype={'acoustic_data': np.int16, 'time_to_failure': np.float64})
   print( "Step 2 @", str( datetime.datetime.now() ), " input train.csv loaded.", sep="" )
   dataset.rename({"acoustic_data": "X", "time_to_failure": "Y"}, axis="columns", inplace=True)
   npoints = len(dataset.X.values) 
@@ -58,7 +75,7 @@ def make_model( ftrain="data/train.csv", NPOINTMAX = -1, look_back = 1):
     if NPOINTMAX > 0 and period_idx[k] > NPOINTMAX: break;
     print("Step 3.",k," @", str( datetime.datetime.now() ), " reading index from ", period_idx[k-1], " to ", period_idx[k])
 
-    arrTrainX_0, arrTrainY_0 = create_dataset( dataset.X.values[ period_idx[k-1] : period_idx[k] ], dataset.Y.values[ period_idx[k-1] : period_idx[k] ], look_back )
+    arrTrainX_0, arrTrainY_0 = create_dataset( dataset.X.values[ period_idx[k-1] : period_idx[k] ], dataset.Y.values[ period_idx[k-1] : period_idx[k] ], look_back, jump )
     arrTrainX.extend( arrTrainX_0 )
     arrTrainY.extend( arrTrainY_0 )
     #if arrTrainX is None: arrTrainX = arrTrainX_0
@@ -143,12 +160,12 @@ def load_model( jsmodelname = "model.json", weightname = "model.h5"):
   return loaded_model
  
 
-def load_testdata( ftest, look_back = 1):
+def load_testdata( ftest, look_back = 1, jump = 1):
   dataset = pd.read_csv(ftest, dtype={'acoustic_data': np.int16, 'time_to_failure': np.float64})
   dataset.rename({"acoustic_data": "X"}, axis="columns", inplace=True)
   npoints = len(dataset.X.values) 
   #print("Test data: ", ftest, " has ", npoints, " data points.", sep = "")
-  arrTestX, __Ynone = create_dataset( dataset.X.values, look_back = look_back )
+  arrTestX, __Ynone = create_dataset( dataset.X.values, look_back = look_back, jump = jump )
   testX = np.array(arrTestX)
   #print(" - Test data shape: ", testX.shape)
   return testX.reshape(testX.shape[0], 1, testX.shape[1])
@@ -168,6 +185,7 @@ def main():
   iarg = 1
   remodel = True
   look_back = 1
+  jump = 1
   while iarg < len(sys.argv):
     if str(sys.argv[iarg]) == "-train":
       iarg += 1
@@ -185,11 +203,15 @@ def main():
     elif str(sys.argv[iarg]) == "-look_back":
       iarg += 1
       look_back = int(sys.argv[ iarg ])
+    elif str(sys.argv[iarg]) == "-jump":
+      iarg += 1
+      jump = int(sys.argv[ iarg ])
     elif str(sys.argv[iarg]) == "-help" or str(sys.argv[iarg]) == "-h":
-      print("Argument List: [-train train.csv] [-test tests.txt] [-make] [-pred]")
+      print("Argument List: [-train train.csv] [-test tests.txt] [-make] [-ntrain_max N] [-pred] [-look_back 3] [-jump 5]")
       return None
     else:
-      print("Argument: ", sys.argv[iarg], " not known. Use: [-train train.csv] [-test tests.txt] [-make] [-pred] [-look_back 3]")
+      print("Argument: ", sys.argv[iarg], " not known.")
+      print("     Use: [-train train.csv] [-test tests.txt] [-make] [-ntrain_max N] [-pred] [-look_back 3] [-jump 5]")
 
     iarg += 1
 
@@ -198,13 +220,15 @@ def main():
   print("Read training: ", ftrain)
   print("Number of training data points: ", ntrain_max)
   print("Read testing list file: ", ftestlist)
+  print("Look back: ", look_back)
+  print("Data points to jump: ", jump)
   print("==============================================")
  
   #
   # make model takes a long time, up to a few days, depending on the size of the training data.
   #
   if remodel:
-    make_model(ftrain, NPOINTMAX = ntrain_max, look_back = look_back)
+    make_model(ftrain, NPOINTMAX = ntrain_max, look_back = look_back, jump = jump)
     return None
 
 
@@ -223,17 +247,27 @@ def main():
   df = {'seg_id': [], 'time_to_failure': []}
   for jl, ftest in enumerate( lines ):
     if jl %100 == 0:
-      print ( "Finished: ", jl, " out of ", nline )
-    testX = load_testdata( ftest, look_back )
+      print ( "Finished: ", jl, " out of ", nline, " current time: ", str( datetime.datetime.now() ) )
+    testX = load_testdata( ftest, look_back, jump = jump )
     predY = model.predict(testX)
     #print( "Shape of output: ", predY.shape)
-    
+   
     #keep the tail of the string: seg_ffe7cc.csv
     k0=len(ftest)
     df['seg_id'].append( ftest[k0 - 14 : k0 - 4] )
     df['time_to_failure'].append( predY[-1][0] )
     #print( "Test dataset: ", ftest[k0 - 14 : k0 - 4], ", predicted next: ", predY[-1][0])
 
+    if jl % 100 != 0: continue
+
+    plt.clf()
+    plt.plot(range(0,len(predY)), [predY[i,0] for i in range(0,len(predY))], c="mediumseagreen")
+    plt.title("Test: "+ftest[k0 - 14 : k0 - 4])
+    plt.xlabel("Index")
+    plt.ylabel("Predicted time to quake (ms)");
+    #plt.ylim(0, 2.);
+    plt.savefig('plot/test_'+str(jl)+"_"+ftest[k0 - 14 : k0 - 4]+'.png')
+ 
   pddf = pd.DataFrame( df )
   pddf.to_csv('sample_submission.csv', index=False)
 
