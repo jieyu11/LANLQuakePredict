@@ -11,8 +11,20 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error
 import math
 import datetime
+# for  frequency fourier transform
+from scipy import fftpack
 
-def create_dataset(X, Y = None, look_back=1, jump = 1):
+ 
+def convert_to_freq(X, nKeep = 1):
+  fullX = fftpack.fft( X )
+  if nKeep > len(X): nKeep = len(X) // 2
+  magnX = np.abs( fullX ) # magnitude: r^2 + i^2, around the range [0, len(X)]
+  #freqX = fftpack.fftfreq(len(X)) # frequencies in [0, 1], use freqX * len(X) to convert it to real freqency if needed. 
+  # start from index = 1, since index = 0 is frequency = 0
+  # return a list of magnitues and frequencies
+  return magnX[1:nKeep+1]
+
+def create_dataset(X, Y = None, look_back=1, jump = 1, freq = False, nFreq = 1):
   '''
     convert an array of values into a dataset matrix
     input: 
@@ -21,6 +33,9 @@ def create_dataset(X, Y = None, look_back=1, jump = 1):
       look_back: number of X entries considered to predict the next Y 
       jump: if it is 1, then index increases by 1 for each data point
             if it is over 1, then index increases by jump+1 for next data point
+      freq: True: convert list of [0:look_back] into frequency space
+      nFreq: keep only the first nFreq items from freq list. It reduces the input size.
+
     return: formed output X and Y
   '''
 
@@ -31,6 +46,8 @@ def create_dataset(X, Y = None, look_back=1, jump = 1):
   ix=0
   while ix < len(X)-look_back-1 :
     x0 = X[ix:(ix+look_back)] # each X element is a list of $look_back elements
+    if freq:
+      x0 = convert_to_freq(x0, nFreq)
     outX.append( x0 )
     ########### if ix % 10000 == 0: print("DEBUG, ix = ", ix, ": mean of x ", np.mean(x0) )
     ix += jump
@@ -49,7 +66,7 @@ def create_dataset(X, Y = None, look_back=1, jump = 1):
     assert(len(outX) == len(outY)), "ERROR: Size of outX="+str(len(outX))+" and outY="+ str(len(outY))+ " different!"
   return outX, outY
 
-def make_model( ftrain="data/train.csv", NPOINTMAX = -1, look_back = 1, jump = 1):
+def make_model( ftrain="data/train.csv", NPOINTMAX = -1, look_back = 1, jump = 1, freq = False, nFreq = 1):
 
   print( "Step 1 @", str( datetime.datetime.now() ), " start of building a model.", sep="" )
   #nrows=nTest + testStart + 1, 
@@ -75,7 +92,7 @@ def make_model( ftrain="data/train.csv", NPOINTMAX = -1, look_back = 1, jump = 1
     if NPOINTMAX > 0 and period_idx[k] > NPOINTMAX: break;
     print("Step 3.",k," @", str( datetime.datetime.now() ), " reading index from ", period_idx[k-1], " to ", period_idx[k])
 
-    arrTrainX_0, arrTrainY_0 = create_dataset( dataset.X.values[ period_idx[k-1] : period_idx[k] ], dataset.Y.values[ period_idx[k-1] : period_idx[k] ], look_back, jump )
+    arrTrainX_0, arrTrainY_0 = create_dataset( dataset.X.values[ period_idx[k-1] : period_idx[k] ], dataset.Y.values[ period_idx[k-1] : period_idx[k] ], look_back, jump , freq, nFreq)
     arrTrainX.extend( arrTrainX_0 )
     arrTrainY.extend( arrTrainY_0 )
     #if arrTrainX is None: arrTrainX = arrTrainX_0
@@ -93,7 +110,8 @@ def make_model( ftrain="data/train.csv", NPOINTMAX = -1, look_back = 1, jump = 1
 
   print( "Step 5 @", str( datetime.datetime.now() ), " build training model." )
   model = Sequential()
-  model.add(LSTM(4, input_shape=(1, look_back)))
+  if freq: model.add(LSTM(4, input_shape=(1, nFreq)))
+  else: model.add(LSTM(4, input_shape=(1, look_back)))
   model.add(Dense(1))
   model.compile(loss='mean_squared_error', optimizer='adam')
   model.fit(trainX, trainY, epochs=1, batch_size=1, verbose=2)
@@ -160,12 +178,12 @@ def load_model( jsmodelname = "model.json", weightname = "model.h5"):
   return loaded_model
  
 
-def load_testdata( ftest, look_back = 1, jump = 1):
+def load_testdata( ftest, look_back = 1, jump = 1, freq = False, nFreq = 1):
   dataset = pd.read_csv(ftest, dtype={'acoustic_data': np.int16, 'time_to_failure': np.float64})
   dataset.rename({"acoustic_data": "X"}, axis="columns", inplace=True)
   npoints = len(dataset.X.values) 
   #print("Test data: ", ftest, " has ", npoints, " data points.", sep = "")
-  arrTestX, __Ynone = create_dataset( dataset.X.values, look_back = look_back, jump = jump )
+  arrTestX, __Ynone = create_dataset( dataset.X.values, look_back = look_back, jump = jump, freq = freq, nFreq =nFreq )
   testX = np.array(arrTestX)
   #print(" - Test data shape: ", testX.shape)
   return testX.reshape(testX.shape[0], 1, testX.shape[1])
@@ -186,6 +204,8 @@ def main():
   remodel = True
   look_back = 1
   jump = 1
+  freq = False
+  nFreq = 0
   while iarg < len(sys.argv):
     if str(sys.argv[iarg]) == "-train":
       iarg += 1
@@ -200,6 +220,11 @@ def main():
       remodel = True
     elif str(sys.argv[iarg]) == "-pred":
       remodel = False
+    elif str(sys.argv[iarg]) == "-freq":
+      freq = True
+    elif str(sys.argv[iarg]) == "-nFreq":
+      iarg += 1
+      nFreq = int(sys.argv[ iarg ])
     elif str(sys.argv[iarg]) == "-look_back":
       iarg += 1
       look_back = int(sys.argv[ iarg ])
@@ -228,7 +253,7 @@ def main():
   # make model takes a long time, up to a few days, depending on the size of the training data.
   #
   if remodel:
-    make_model(ftrain, NPOINTMAX = ntrain_max, look_back = look_back, jump = jump)
+    make_model(ftrain, NPOINTMAX = ntrain_max, look_back = look_back, jump = jump, freq = freq, nFreq = nFreq )
     return None
 
 
@@ -248,7 +273,7 @@ def main():
   for jl, ftest in enumerate( lines ):
     if jl %100 == 0:
       print ( "Finished: ", jl, " out of ", nline, " current time: ", str( datetime.datetime.now() ) )
-    testX = load_testdata( ftest, look_back, jump = jump )
+    testX = load_testdata( ftest, look_back, jump = jump, freq = freq, nFreq = nFreq )
     predY = model.predict(testX)
     #print( "Shape of output: ", predY.shape)
    
