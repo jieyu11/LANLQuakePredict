@@ -22,7 +22,7 @@ def convert_to_freq(X, nKeep = 1):
   #freqX = fftpack.fftfreq(len(X)) # frequencies in [0, 1], use freqX * len(X) to convert it to real freqency if needed. 
   # start from index = 1, since index = 0 is frequency = 0
   # return a list of magnitues and frequencies
-  return magnX[1:nKeep+1]
+  return magnX[0:nKeep]
 
 def create_dataset(X, Y = None, look_back=1, jump = 1, freq = False, nFreq = 1):
   '''
@@ -110,8 +110,10 @@ def make_model( ftrain="data/train.csv", NPOINTMAX = -1, look_back = 1, jump = 1
 
   print( "Step 5 @", str( datetime.datetime.now() ), " build training model." )
   model = Sequential()
-  if freq: model.add(LSTM(4, input_shape=(1, nFreq)))
-  else: model.add(LSTM(4, input_shape=(1, look_back)))
+  #if freq: model.add(LSTM(4, input_shape=(1, nFreq)))
+  #else: model.add(LSTM(4, input_shape=(1, look_back)))
+  if freq: model.add(LSTM(50, input_shape=(1, nFreq)))
+  else: model.add(LSTM(50, input_shape=(1, look_back)))
   model.add(Dense(1))
   model.compile(loss='mean_squared_error', optimizer='adam')
   model.fit(trainX, trainY, epochs=1, batch_size=1, verbose=2)

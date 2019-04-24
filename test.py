@@ -113,7 +113,7 @@ def make_plot( ftrain="data/train.csv", istart = 0, npoints = 175):
   # ax[2].set_ylabel("Y value");
   # #ax[2].set_ylim(-200, 200);
 
-  plotname = "detail_s"+str(istart)+"_np" + str( npoints ) + ".png"
+  plotname = "plot/detail/s"+str(istart)+"_np" + str( npoints ) + ".png"
   plt.savefig(plotname)
   
   return None
@@ -124,7 +124,7 @@ def make_plot( ftrain="data/train.csv", istart = 0, npoints = 175):
   plt.xlabel("Index")
   plt.ylabel("Time to quake (ms)");
   #plt.ylim(0, 2.);
-  plt.savefig('train_0.png')
+  plt.savefig('plot/train_0.png')
 
 
   #plt.clf()
@@ -133,7 +133,7 @@ def make_plot( ftrain="data/train.csv", istart = 0, npoints = 175):
   #plt.xlabel("Index")
   #plt.ylabel("Time to quake (ms)");
   ##plt.ylim(0, 2.);
-  #plt.savefig('test_0.png')
+  #plt.savefig('plot/test_0.png')
 
 
 def main():
